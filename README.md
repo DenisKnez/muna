@@ -2,7 +2,7 @@
 
 - This is what I was able to do in ~5  hours and after a brake changed the stat methods and small errors that didn't allow the project to build (not sure how long that took)
 - Was not able to test it to see if everything works (because of time), but it's buildable
-
+- I used regex (website) to build and test my regex, so that is "tested"
 
 ## **What should be done/improved***
 
