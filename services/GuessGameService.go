@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"regexp"
 	"time"
 
@@ -22,7 +23,7 @@ func NewGuessGameService(ggRepo domains.GuessGameRepository) domains.GuessGameSe
 }
 
 //Check when the validity of the provided string
-func (ggService *GuessGameService) Check(gameID string, guess string) (ok bool, err error) {
+func (ggService *GuessGameService) Check(gameID string, guess string) (isPatternGuessed bool, err error) {
 
 	err = checkStringLenght(guess)
 
@@ -31,8 +32,6 @@ func (ggService *GuessGameService) Check(gameID string, guess string) (ok bool, 
 	}
 
 	isInSet := firstCharacterContainedInSet(guess)
-
-	isPatternGuessed, err := false, nil
 
 	if isInSet == false {
 		isPatternGuessed, err = firstCharacterNotInSet(guess)
@@ -51,20 +50,33 @@ func (ggService *GuessGameService) Check(gameID string, guess string) (ok bool, 
 	}
 
 	if isPatternGuessed {
-		ggService.ggRepo.ChangeInfoState(gameUUID)
+		err = ggService.ggRepo.ChangeInfoState(gameUUID)
+
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 
-	ggService.logHistory(gameUUID, guess)
+	err = ggService.logHistory(gameUUID, guess)
+
+	if err != nil {
+		fmt.Println(err)
+
+	}
 
 	return
 }
 
-func (ggService *GuessGameService) logHistory(gameID uuid.UUID, guess string) {
+func (ggService *GuessGameService) logHistory(gameID uuid.UUID, guess string) (err error) {
 
-	historyItemUUID := util.NewUUID()
+	historyItemUUID := util.NewUUID().String()
 	timestamp := time.Now().Format(time.RFC3339)
 
-	ggService.ggRepo.LogHistory(gameID, historyItemUUID, timestamp, guess)
+	err = ggService.ggRepo.LogHistory(gameID.String(), historyItemUUID, timestamp, guess)
+
+	return
+
 }
 
 //if the first character in the string is in set ['a', 'e', 'i', 'o', 'u'] returns true
@@ -120,10 +132,15 @@ func firstCharacterNotInSet(guess string) (matched bool, err error) {
 	return
 }
 
-//NewGame create game uuid
-func (ggService *GuessGameService) NewGame() uuid.UUID {
+func (ggService *GuessGameService) gameExists(gameID uuid.UUID) (ok bool) {
+	return ggService.ggRepo.GameExists(gameID)
+}
 
-	return util.NewUUID()
+//NewGame create game uuid
+func (ggService *GuessGameService) NewGame() (newID uuid.UUID) {
+	newID = util.NewUUID()
+	ggService.ggRepo.NewGame(newID, data.StateUnsolved)
+	return
 }
 
 //Stat get games stats
@@ -131,12 +148,14 @@ func (ggService *GuessGameService) Stat(gameID string) (info data.Info, err erro
 	gameUUID, err := uuid.Parse(gameID)
 
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
 	info, err = ggService.ggRepo.Stat(gameUUID)
 
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 

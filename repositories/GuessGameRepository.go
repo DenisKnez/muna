@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/DenisKnez/muna/data"
 	"github.com/DenisKnez/muna/domains"
@@ -19,8 +20,8 @@ func NewGuessGameRepository(conn *sql.DB) domains.GuessGameRepository {
 }
 
 //LogHistory history
-func (ggRepo *GuessGameRepository) LogHistory(infoUUID uuid.UUID, historyItemUUID uuid.UUID, timestamp string, guess string) (err error) {
-	stmt, err := ggRepo.conn.Prepare("INSERT INTO history_item (id, timestamp, value, info_id) VALUES ($1, $2, $3)")
+func (ggRepo *GuessGameRepository) LogHistory(infoUUID string, historyItemUUID string, timestamp string, guess string) (err error) {
+	stmt, err := ggRepo.conn.Prepare("INSERT INTO history_item (id, timestamp, value, info_id) VALUES ($1, $2, $3, $4)")
 
 	if err != nil {
 		return
@@ -38,11 +39,12 @@ func (ggRepo *GuessGameRepository) LogHistory(infoUUID uuid.UUID, historyItemUUI
 }
 
 //ChangeInfoState changes the state of the info
-func (ggRepo *GuessGameRepository) ChangeInfoState(gameID uuid.UUID) {
+func (ggRepo *GuessGameRepository) ChangeInfoState(gameID uuid.UUID) (err error) {
 
-	stmt, err := ggRepo.conn.Prepare("UPDATE info SET state = $1 VALUES WHERE id = $2")
+	stmt, err := ggRepo.conn.Prepare("UPDATE info SET state = $1 WHERE id = $2")
 
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
@@ -51,6 +53,7 @@ func (ggRepo *GuessGameRepository) ChangeInfoState(gameID uuid.UUID) {
 	_, err = stmt.Exec(data.StateSolved, gameID)
 
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
@@ -66,6 +69,7 @@ func (ggRepo *GuessGameRepository) Stat(gameID uuid.UUID) (info data.Info, err e
 	RIGHT JOIN history_item ON info.id = history_item.info_id WHERE info.id = $1`, gameID)
 
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
@@ -76,20 +80,22 @@ func (ggRepo *GuessGameRepository) Stat(gameID uuid.UUID) (info data.Info, err e
 		err = rows.Scan(&info.State, &historyItem.Value, &historyItem.TimeStamp)
 
 		if err != nil {
+			fmt.Println(err)
 			return
 		}
 
 		info.History = append(info.History, historyItem)
 	}
-	
+
 	return
 }
 
 //NewGame creates a new info/game
-func (ggRepo *GuessGameRepository) NewGame(infoUUID uuid.UUID, state data.State) (err error){
+func (ggRepo *GuessGameRepository) NewGame(infoUUID uuid.UUID, state data.State) (err error) {
 	stmt, err := ggRepo.conn.Prepare("INSERT INTO info (id, state) VALUES ($1, $2)")
 
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
@@ -98,8 +104,28 @@ func (ggRepo *GuessGameRepository) NewGame(infoUUID uuid.UUID, state data.State)
 	_, err = stmt.Exec(infoUUID, state)
 
 	if err != nil {
+		fmt.Println(err)
+
 		return
 	}
 
 	return
+}
+
+func (ggRepo *GuessGameRepository) GameExists(gameID uuid.UUID) (ok bool) {
+
+	var game int
+	err := ggRepo.conn.QueryRow("SELECT COUNT(id) FROM info WHERE id = $1", gameID).
+		Scan(&game)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	if game > 0 {
+		return true
+	}
+
+	return false
+
 }
