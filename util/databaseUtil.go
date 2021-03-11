@@ -10,6 +10,7 @@ import (
 	ini "gopkg.in/ini.v1"
 )
 
+//GetDatabaseConnection get the database connection with the provided config
 func GetDatabaseConnection(config *ini.File) *sql.DB {
 
 	connString := config.Section("database").Key("connection").String()
