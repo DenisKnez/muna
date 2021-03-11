@@ -1,10 +1,17 @@
 package handlers
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+
 	"github.com/DenisKnez/muna/domains"
+	"github.com/google/uuid"
 )
 
+const (
+	gameSessionCookie = "gameSession"
+)
 
 //GuessGameHandler guess game handler
 type GuessGameHandler struct {
@@ -12,18 +19,14 @@ type GuessGameHandler struct {
 }
 
 //NewGuessGameHandler returns a new guess game handler
-func NewGuessGameHandler(ggService domains.GuessGameService) *GuessGameHandler{
+func NewGuessGameHandler(ggService domains.GuessGameService) *GuessGameHandler {
 	return &GuessGameHandler{ggService}
 }
 
 //Check endpoint to check the validity of the string
 func (ggHandler *GuessGameHandler) Check(w http.ResponseWriter, r *http.Request) {
 
-
-	gameID := checkGameSession(w, r, ggHandler.guessGameService)
-
-
-	//VALUE provided
+	gameID := ggHandler.checkGameSession(w, r)
 
 	guess := r.URL.Query().Get("guess")
 
@@ -32,43 +35,74 @@ func (ggHandler *GuessGameHandler) Check(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	isCorrect, err := ggHandler.guessGameService.Check(gameID, guess)
 
-	ggHandler.guessGameService.Check(gameID, guess)
+	if err != nil {
+		http.Error(w, "Failed service", http.StatusInternalServerError)
+		return
+	}
 
+	if isCorrect {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("The guess was correct, you won!"))
+		return
+	}
 
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("The guess '%s' was wrong, try to guess again", guess)))
 }
 
 //Stat guess game enpoint to get the current state of the game as well as the history
 func (ggHandler *GuessGameHandler) Stat(w http.ResponseWriter, r *http.Request) {
 
-	gameID := checkGameSession(w, r, ggHandler.guessGameService)
+	gameID := ggHandler.checkGameSession(w, r)
 
-	ggHandler.guessGameService.Stat(gameID)
+	info, err := ggHandler.guessGameService.Stat(gameID)
+
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, "Failed to get the information", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	jsonResult, err := json.Marshal(info)
+
+	if err != nil {
+		http.Error(w, "Failed json encoding", http.StatusInternalServerError)
+	}
+
+	w.Write(jsonResult)
 }
 
-func checkGameSession(w http.ResponseWriter, r *http.Request, service domains.GuessGameService) (gameID string){
-
-	cookieName := "player"
+//check if this is a new game (looks if the game cookie exists). If it's the first game creates a new game in the database
+func (ggHandler *GuessGameHandler) checkGameSession(w http.ResponseWriter, r *http.Request) (gameID uuid.UUID) {
 
 	//GAME SESSION
-	cookie, err := r.Cookie(cookieName)
+	cookie, err := r.Cookie(gameSessionCookie)
 
 	if err != nil {
 		if err != http.ErrNoCookie {
 			http.Error(w, "Failed to read player information", http.StatusInternalServerError)
 			return
 		}
-		
-		gameID = service.NewGame().String()
+
+		gameID = ggHandler.guessGameService.NewGame()
 
 		http.SetCookie(w, &http.Cookie{
-			Name: cookieName,
-			Value: gameID,
+			Name:  gameSessionCookie,
+			Value: gameID.String(),
 		})
 
-		return 
+		return
 	}
 
-	gameID = cookie.Value
+	gameID, err = uuid.Parse(cookie.Value)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	return
 }

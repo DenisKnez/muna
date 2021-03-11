@@ -2,22 +2,28 @@ package util
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/google/uuid"
+	//database driver
+	_ "github.com/jackc/pgx/v4/stdlib"
+	ini "gopkg.in/ini.v1"
 )
 
-//Db Database connection
-var Db *sql.DB
+//GetDatabaseConnection get the database connection with the provided config
+func GetDatabaseConnection(config *ini.File) *sql.DB {
 
-func init() {
+	connString := config.Section("database").Key("connection").String()
 
 	var err error
-	Db, err = sql.Open("pqx", "postgres://postgres:rootPassword@localhost:5432/muna?sslmode=disable")
+	Db, err := sql.Open("pgx", connString)
 
 	if err != nil {
+		fmt.Println(err)
 		panic("Cannot connect to database")
 	}
 
+	return Db
 }
 
 //NewUUID generates a new uuid

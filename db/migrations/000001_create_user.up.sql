@@ -1,0 +1,1 @@
+CREATE USER MUNAUSER WITH PASSWORD 'munapassword';
