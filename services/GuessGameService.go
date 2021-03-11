@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"time"
@@ -9,21 +10,27 @@ import (
 	"github.com/DenisKnez/muna/domains"
 	errors "github.com/DenisKnez/muna/services/errors"
 	"github.com/DenisKnez/muna/util"
+	"github.com/go-redis/redis"
 	"github.com/google/uuid"
+)
+
+const (
+	statRedisID = "stats"
 )
 
 //GuessGameService guess game service
 type GuessGameService struct {
 	ggRepo domains.GuessGameRepository
+	redis  *redis.Client
 }
 
 //NewGuessGameService returns new guess game service
-func NewGuessGameService(ggRepo domains.GuessGameRepository) domains.GuessGameService {
-	return &GuessGameService{ggRepo}
+func NewGuessGameService(ggRepo domains.GuessGameRepository, redis *redis.Client) domains.GuessGameService {
+	return &GuessGameService{ggRepo, redis}
 }
 
 //Check when the validity of the provided string
-func (ggService *GuessGameService) Check(gameID string, guess string) (isPatternGuessed bool, err error) {
+func (ggService *GuessGameService) Check(gameID uuid.UUID, guess string) (isPatternGuessed bool, err error) {
 
 	err = checkStringLenght(guess)
 
@@ -40,17 +47,12 @@ func (ggService *GuessGameService) Check(gameID string, guess string) (isPattern
 	}
 
 	if err != nil {
-		return
-	}
-
-	gameUUID, err := uuid.Parse(gameID)
-
-	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
 	if isPatternGuessed {
-		err = ggService.ggRepo.ChangeInfoState(gameUUID)
+		err = ggService.ggRepo.ChangeInfoState(gameID)
 
 		if err != nil {
 			fmt.Println(err)
@@ -58,7 +60,7 @@ func (ggService *GuessGameService) Check(gameID string, guess string) (isPattern
 		}
 	}
 
-	err = ggService.logHistory(gameUUID, guess)
+	err = ggService.logHistory(gameID, guess)
 
 	if err != nil {
 		fmt.Println(err)
@@ -68,6 +70,7 @@ func (ggService *GuessGameService) Check(gameID string, guess string) (isPattern
 	return
 }
 
+//logs the rounds played
 func (ggService *GuessGameService) logHistory(gameID uuid.UUID, guess string) (err error) {
 
 	historyItemUUID := util.NewUUID().String()
@@ -132,6 +135,7 @@ func firstCharacterNotInSet(guess string) (matched bool, err error) {
 	return
 }
 
+//checks if there a game with that id in the database, if there is returns
 func (ggService *GuessGameService) gameExists(gameID uuid.UUID) (ok bool) {
 	return ggService.ggRepo.GameExists(gameID)
 }
@@ -144,15 +148,27 @@ func (ggService *GuessGameService) NewGame() (newID uuid.UUID) {
 }
 
 //Stat get games stats
-func (ggService *GuessGameService) Stat(gameID string) (info data.Info, err error) {
-	gameUUID, err := uuid.Parse(gameID)
+func (ggService *GuessGameService) Stat(gameID uuid.UUID) (info data.Info, err error) {
 
-	if err != nil {
+	jsonString, err := ggService.redis.Get(statRedisID).Result()
+
+	if err == redis.Nil {
+		err = ggService.getStats(gameID, &info)
+
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		return
+
+	} else if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	info, err = ggService.ggRepo.Stat(gameUUID)
+	fmt.Println(jsonString)
+
+	err = json.Unmarshal([]byte(jsonString), &info)
 
 	if err != nil {
 		fmt.Println(err)
@@ -160,4 +176,32 @@ func (ggService *GuessGameService) Stat(gameID string) (info data.Info, err erro
 	}
 
 	return
+}
+
+func (ggService *GuessGameService) getStats(gameID uuid.UUID, info *data.Info) (err error) {
+
+	expirationTime := 10 * time.Second
+
+	*info, err = ggService.ggRepo.Stat(gameID)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	jsonInfo, err := json.Marshal(*info)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	err = ggService.redis.Set(statRedisID, string(jsonInfo), expirationTime).Err()
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	return
+
 }

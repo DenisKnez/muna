@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/DenisKnez/muna/domains"
+	"github.com/google/uuid"
 )
 
 const (
@@ -75,7 +76,7 @@ func (ggHandler *GuessGameHandler) Stat(w http.ResponseWriter, r *http.Request) 
 }
 
 //check if this is a new game (looks if the game cookie exists). If it's the first game creates a new game in the database
-func (ggHandler *GuessGameHandler) checkGameSession(w http.ResponseWriter, r *http.Request) (gameID string) {
+func (ggHandler *GuessGameHandler) checkGameSession(w http.ResponseWriter, r *http.Request) (gameID uuid.UUID) {
 
 	//GAME SESSION
 	cookie, err := r.Cookie(gameSessionCookie)
@@ -86,16 +87,22 @@ func (ggHandler *GuessGameHandler) checkGameSession(w http.ResponseWriter, r *ht
 			return
 		}
 
-		gameID = ggHandler.guessGameService.NewGame().String()
+		gameID = ggHandler.guessGameService.NewGame()
 
 		http.SetCookie(w, &http.Cookie{
 			Name:  gameSessionCookie,
-			Value: gameID,
+			Value: gameID.String(),
 		})
 
 		return
 	}
 
-	gameID = cookie.Value
+	gameID, err = uuid.Parse(cookie.Value)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	return
 }

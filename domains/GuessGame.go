@@ -16,7 +16,7 @@ type GuessGameRepository interface {
 
 //GuessGameService guess game service
 type GuessGameService interface {
-	Check(gameID string, guess string) (ok bool, err error)
-	Stat(gameID string) (info data.Info, err error)
+	Check(gameID uuid.UUID, guess string) (ok bool, err error)
+	Stat(gameID uuid.UUID) (info data.Info, err error)
 	NewGame() (newID uuid.UUID)
 }
